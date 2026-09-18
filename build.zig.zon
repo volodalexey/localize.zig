@@ -1,7 +1,7 @@
 .{
-    .name = "localize",
+    .name = .localize,
+    .fingerprint = 0x6b54c927d7383c11,
     .paths = .{""},
     .version = "0.0.0",
-    .dependencies = .{
-    },
+    .dependencies = .{},
 }

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const resource = @import("resource.zig");
+pub const resource = @import("Resource.zig");
 
 pub const Resource = resource.Resource;
 pub const Locale = resource.Locale;

@@ -34,12 +34,12 @@ pub fn _format(self: Message, writer: anytype, args: anytype) !void {
         enum_fields[i] = .{ .name = f.name, .value = i };
     }
 
-    const Tag = @Type(.{ .@"enum" = .{
-        .decls = &.{},
-        .tag_type = u16,
-        .fields = &enum_fields,
-        .is_exhaustive = true,
-    } });
+    const Tag = @Enum(
+        u16,
+        &enum_fields,
+        &.{},
+        true,
+    );
 
     return StructArgs.renderParts(Tag, fields, writer, args, self.parts);
 }
