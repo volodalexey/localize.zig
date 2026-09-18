@@ -12,11 +12,13 @@ pub fn build(b: *std.Build) !void {
 
     const lib_test = b.addTest(.{
         .root_module = mod,
-        .test_runner = .{ .mode = .simple, .path = b.path("test_runner.zig") },
     });
     const run_test = b.addRunArtifact(lib_test);
     run_test.has_side_effects = true;
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_test.step);
+
+    const run_step = b.step("run", "Alias for test");
+    run_step.dependOn(&run_test.step);
 }

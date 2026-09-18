@@ -27,21 +27,7 @@ pub fn _format(self: Message, writer: anytype, args: anytype) !void {
     if (T == Data) {
         return DataArgs.renderParts(writer, args, self.parts);
     }
-
-    const fields = @typeInfo(T).@"struct".fields;
-    comptime var enum_fields: [fields.len]std.builtin.Type.EnumField = undefined;
-    inline for (fields, 0..) |f, i| {
-        enum_fields[i] = .{ .name = f.name, .value = i };
-    }
-
-    const Tag = @Enum(
-        u16,
-        &enum_fields,
-        &.{},
-        true,
-    );
-
-    return StructArgs.renderParts(Tag, fields, writer, args, self.parts);
+    return StructArgs.renderParts(T, writer, args, self.parts);
 }
 
 pub const Part = union(enum) {
@@ -69,13 +55,15 @@ pub const Part = union(enum) {
 
 // Used when the args passed to render is a struct / anonymous struct
 const StructArgs = struct {
-    fn renderParts(Tag: type, fields: []const std.builtin.Type.StructField, writer: anytype, args: anytype, parts: []const Part) !void {
+    fn renderParts(comptime T: type, writer: anytype, args: anytype, parts: []const Part) !void {
         for (parts) |p| {
-            try renderPart(Tag, fields, writer, args, p);
+            try renderPart(T, writer, args, p);
         }
     }
 
-    fn renderPart(Tag: type, fields: []const std.builtin.Type.StructField, writer: anytype, args: anytype, part: Part) @TypeOf(writer).Error!void {
+    fn renderPart(comptime T: type, writer: anytype, args: anytype, part: Part) @TypeOf(writer).Error!void {
+        const Tag = std.meta.FieldEnum(T);
+        const fields = @typeInfo(T).@"struct".fields;
         switch (part) {
             .literal => |str| try writer.writeAll(str),
             .variable => |variable| {
@@ -96,13 +84,13 @@ const StructArgs = struct {
                     if (@as(Tag, @enumFromInt(i)) == name_enum) {
                         const value = @field(args, f.name);
                         switch (getPluralCondition(f.type, value)) {
-                            .zero => return renderParts(Tag, fields, writer, args, plural.zero orelse plural.other),
-                            .one => return renderParts(Tag, fields, writer, args, plural.one orelse plural.other),
-                            .other => return renderParts(Tag, fields, writer, args, plural.other),
+                            .zero => return renderParts(T, writer, args, plural.zero orelse plural.other),
+                            .one => return renderParts(T, writer, args, plural.one orelse plural.other),
+                            .other => return renderParts(T, writer, args, plural.other),
                         }
                     }
                 }
-                return renderParts(Tag, fields, writer, args, plural.other);
+                return renderParts(T, writer, args, plural.other);
             },
         }
     }
@@ -119,19 +107,19 @@ const StructArgs = struct {
         }
 
         switch (type_info) {
-            .int, .comptime_int => return std.fmt.formatInt(value, 10, .lower, .{}, writer),
-            .float, .comptime_float => return std.fmt.format(writer, "{d}", .{value}),
+            .int, .comptime_int => return writer.print("{d}", .{value}),
+            .float, .comptime_float => return writer.print("{d}", .{value}),
             .optional => return if (value) |v| writeValue(writer, v, constraint) else writer.writeAll("null"),
             .pointer => |ptr| switch (ptr.size) {
-                .Slice => return writeSlice(writer, @as([]const ptr.child, value)),
-                .One => switch (@typeInfo(ptr.child)) {
+                .slice => return writeSlice(writer, @as([]const ptr.child, value)),
+                .one => switch (@typeInfo(ptr.child)) {
                     .array => return writeSlice(writer, @as([]const std.meta.Elem(ptr.child), value)),
                     else => writeTypeError(T),
                 },
                 else => writeTypeError(T),
             },
             .array => return writeValue(writer, &value, constraint),
-            else => return std.fmt.format(writer, "{any}", .{value}),
+            else => return writer.print("{any}", .{value}),
         }
     }
 
@@ -248,15 +236,19 @@ const PluralRenderCondition = enum {
     other,
 };
 
-fn Writer(comptime W: type, comptime encoder: *const fn (writer: anytype, chars: []const u8) W.Error!void) type {
+fn Writer(comptime W: type, comptime encoder: *const fn (writer: anytype, chars: []const u8) anyerror!void) type {
     return struct {
         writer: W,
 
-        pub const Error = W.Error;
+        pub const Error = anyerror;
 
         const Self = @This();
         pub fn writeAll(self: Self, data: []const u8) !void {
             return encoder(self.writer, data);
+        }
+
+        pub fn print(self: Self, comptime fmt_str: []const u8, args: anytype) !void {
+            return self.writer.print(fmt_str, args);
         }
 
         pub fn writeBytesNTimes(self: Self, bytes: []const u8, n: usize) !void {
@@ -500,9 +492,9 @@ fn testRender(src: []const u8, args: anytype, expected: []const u8) !void {
     defer parser.deinit();
 
     const msg = try parser.parseMessage(src);
-    var arr = std.ArrayList(u8).init(t.allocator);
-    defer arr.deinit();
+    var out: std.Io.Writer.Allocating = .init(t.allocator);
+    defer out.deinit();
 
-    try msg.format(arr.writer(), args);
-    try t.expectString(expected, arr.items);
+    try msg.format(&out.writer, args);
+    try t.expectString(expected, out.written());
 }

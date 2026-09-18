@@ -96,17 +96,16 @@ pub const Value = union(enum) {
             },
             else => {},
         }
-        @compileLog(@typeInfo(T).pointer.child);
         @compileError("Unsupported value type: " ++ @typeName(T));
     }
 
     pub fn write(self: Value, writer: anytype) !void {
         switch (self) {
             .null => return writer.writeAll("null"),
-            .u64 => |v| return std.fmt.formatInt(v, 10, .lower, .{}, writer),
-            .i64 => |v| return std.fmt.formatInt(v, 10, .lower, .{}, writer),
-            .f64 => |v| return std.fmt.format(writer, "{d}", .{v}),
-            .f32 => |v| return std.fmt.format(writer, "{d}", .{v}),
+            .u64 => |v| return writer.print("{d}", .{v}),
+            .i64 => |v| return writer.print("{d}", .{v}),
+            .f64 => |v| return writer.print("{d}", .{v}),
+            .f32 => |v| return writer.print("{d}", .{v}),
             .bool => |v| return writer.writeAll(if (v) "true" else "false"),
             .string => |v| return writer.writeAll(v),
         }
@@ -124,12 +123,12 @@ fn isString(comptime T: type) bool {
         if (ptr.is_volatile or ptr.is_allowzero) break :blk false;
 
         // If it's already a slice, simple check.
-        if (ptr.size == .Slice) {
+        if (ptr.size == .slice) {
             break :blk ptr.child == u8;
         }
 
         // Otherwise check if it's an array type that coerces to slice.
-        if (ptr.size == .One) {
+        if (ptr.size == .one) {
             const child = @typeInfo(ptr.child);
             if (child == .array) {
                 const arr = &child.array;
@@ -217,8 +216,10 @@ test "Data: jsonStringify" {
     });
     defer data.deinit(t.allocator);
 
-    const json_string = try std.json.stringifyAlloc(t.allocator, data, .{});
-    defer t.allocator.free(json_string);
+    var out: std.Io.Writer.Allocating = .init(t.allocator);
+    defer out.deinit();
+    try std.json.Stringify.value(data, .{}, &out.writer);
+    const json_string = out.written();
 
     var parsed = try std.json.parseFromSlice(std.json.Value, t.allocator, json_string, .{});
     defer parsed.deinit();

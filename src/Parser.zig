@@ -41,7 +41,7 @@ stack: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Message.Part)),
 // In order to unescape values, we'll need some temp space. Could be more efficient
 // than this on a per-message basis, but when re-used across multiple messages
 // (or even multiple languages), an ArrayList is pretty efficient.
-scratch: std.ArrayList(u8),
+    scratch: std.ArrayList(u8),
 
 // The allocator used for the parser itself
 allocator: Allocator,
@@ -55,13 +55,13 @@ pub fn init(allocator: Allocator, message_allocator: Allocator, options: Opts) !
         .pos = 0,
         .src = "",
         .depth = 0,
-        .stack = .{},
+        .stack = .empty,
         .max_depth = 0,
         .mode = .normal,
         .options = options,
         .allocator = allocator,
         .message_allocator = message_allocator,
-        .scratch = std.ArrayList(u8).init(allocator),
+        .scratch = .empty,
     };
 }
 
@@ -71,7 +71,7 @@ pub fn deinit(self: *Parser) void {
         stack.deinit(allocator);
     }
     self.stack.deinit(allocator);
-    self.scratch.deinit();
+    self.scratch.deinit(self.allocator);
 }
 
 pub fn parseMessage(self: *Parser, src: []const u8) !Message {
@@ -88,7 +88,7 @@ fn parseParts(self: *Parser, message_allocator: Allocator) ParseError![]Message.
 
     var stack = &self.stack;
     if (depth == self.stack.items.len) {
-        try self.stack.append(allocator, .{});
+        try self.stack.append(allocator, .empty);
     }
 
     // DO NOT store &stack.items[depth] into a local variable
@@ -138,7 +138,7 @@ fn nextPart(self: *Parser, message_allocator: Allocator) !ParsePartResult {
                 const remaining = src.len - i;
                 if (remaining == 1) {
                     self.src = "";
-                    try scratch.append('\'');
+                    try scratch.append(self.allocator, '\'');
                     return .{ .done = try generateLiteral(message_allocator, scratch.items, src) };
                 }
 
@@ -149,16 +149,16 @@ fn nextPart(self: *Parser, message_allocator: Allocator) !ParsePartResult {
                         self.src = "";
                         return .{ .done = try generateLiteral(message_allocator, scratch.items, src[next_index..]) };
                     };
-                    try scratch.appendSlice(src[next_index..end]);
+                    try scratch.appendSlice(self.allocator, src[next_index..end]);
                     i = end + 1;
                 } else if (mode == .plural and (next == '}' or next == '#')) {
                     const end = std.mem.indexOfScalarPos(u8, src, next_index, '\'') orelse return error.InvalidPluralCondition;
-                    try scratch.appendSlice(src[next_index..end]);
+                    try scratch.appendSlice(self.allocator, src[next_index..end]);
                     i = end + 1;
                 } else {
                     // not a real escape
                     i = next_index;
-                    try scratch.append('\'');
+                    try scratch.append(self.allocator, '\'');
                 }
             },
             else => |c| {
@@ -182,7 +182,7 @@ fn nextPart(self: *Parser, message_allocator: Allocator) !ParsePartResult {
                 }
 
                 i += 1;
-                try scratch.append(c);
+                try scratch.append(self.allocator, c);
             },
         }
     }
@@ -340,7 +340,7 @@ fn nextToken(self: *Parser) ?[]const u8 {
 }
 
 fn skipSpaces(self: *Parser) void {
-    self.src = std.mem.trimLeft(u8, self.src, &std.ascii.whitespace);
+    self.src = std.mem.trimStart(u8, self.src, &std.ascii.whitespace);
 }
 
 fn nest(self: *Parser, new_mode: ParseMode) error{NestingTooDeep}!NestState {

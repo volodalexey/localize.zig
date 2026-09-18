@@ -3,6 +3,7 @@ ICU Message Format for Zig
 Very basic support for parsing and rendering ICU message formats.
 
 ## Install
+
 1) Add localize.zig as a dependency in your `build.zig.zon`:
 
 ```bash
@@ -21,8 +22,8 @@ const localize = b.dependency("localize", .{
 exe.root_module.addImport("localize", localize.module("localize"));
 ```
 
-
 ## Usage
+
 First, create a `Resource`:
 
 ```zig
@@ -72,10 +73,11 @@ locale.write("string_len_min", .{.min = 6});
 ```
 
 ## Limited Functionality
+
 Currently, this only supports:
 
 * variables
 * plural
-    * =0 or zero
-    * =1 or one
-    * other
+  * =0 or zero
+  * =1 or one
+  * other
